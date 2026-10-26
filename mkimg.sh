@@ -23,7 +23,7 @@ LOOP=$(sudo losetup --find --show -P "$IMG")
 EFI_DEV="${LOOP}p1"
 ROOT_DEV="${LOOP}p2"
 
-sudo mkfs.fat -F32 "$EFI_DEV"
+sudo mkfs.fat -F32 -S 512 -s 1 "$EFI_DEV"
 sudo mkfs.ext4 "$ROOT_DEV"
 
 mkdir -p efi mnt
