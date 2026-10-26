@@ -30,11 +30,18 @@ mkdir -p efi mnt
 sudo mount "$EFI_DEV" efi
 sudo mount "$ROOT_DEV" mnt
 
-# EFI / systemd-boot
+# --------------------------
+# EFI分区：手动放systemd-boot，不用bootctl install
+# --------------------------
 sudo mkdir -p efi/EFI/BOOT
+# 复制 systemd-boot 的EFI引导文件
+sudo cp /usr/lib/systemd/boot/efi/systemd-bootx64.efi efi/EFI/BOOT/BOOTX64.EFI
+
+# 内核+initramfs
 sudo cp bzImage efi/EFI/BOOT/vmlinuz
 sudo cp initramfs.cpio.gz efi/EFI/BOOT/initrd
 
+# loader配置
 sudo mkdir -p efi/loader/entries
 cat > entry.conf <<EOF
 title My Min Linux
@@ -45,12 +52,20 @@ EOF
 sudo cp entry.conf efi/loader/entries/default.conf
 rm entry.conf
 
-sudo bootctl --esp-path=efi install
+# loader.conf 默认
+cat > loader.conf <<EOF
+default default
+timeout 3
+EOF
+sudo cp loader.conf efi/loader/loader.conf
+rm loader.conf
 
+# --------------------------
 # 拷贝rootfs
+# --------------------------
 sudo cp -r rootfs/* mnt/
 
-# 顺序：先卸载，再释放loop！
+# 【顺序：先卸载，再释放loop！】
 sudo umount efi
 sudo umount mnt
 sudo losetup -d "$LOOP"
