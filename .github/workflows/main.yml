@@ -1,0 +1,80 @@
+name: Build Minimal x86_64 EXT4 Builtin OS
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential bison flex libssl-dev bc cpio gzip wget xz-utils libelf-dev dwarves kmod rsync dosfstools mtools parted e2fsprogs systemd-boot
+
+      - name: Download Linux 6.6.60
+        run: |
+          wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.60.tar.xz
+          tar -xf linux-6.6.60.tar.xz
+          cp kernel.config linux-6.6.60/.config
+
+      - name: Compile kernel and modules
+        run: |
+          cd linux-6.6.60
+          make olddefconfig
+          make -j$(nproc) bzImage modules
+
+      - name: Package full drivers
+        run: |
+          cd linux-6.6.60
+          mkdir -p ../out/full/lib/modules
+          make INSTALL_MOD_PATH=../out/full modules_install
+          find ../out/full -name "*.ko" -exec strip --strip-debug {} \;
+          cd ../out/full
+          tar -zcf ../full-drivers.tar.gz lib
+
+      - name: Package minimal drivers
+        run: |
+          cd out
+          rm -rf minimal
+          mkdir -p minimal/lib/modules
+          VER=$(ls full/lib/modules/)
+          mkdir -p minimal/lib/modules/$VER
+          KELIST=(
+            kernel/drivers/net/ethernet/intel/e1000/e1000.ko
+            kernel/drivers/net/ethernet/intel/e1000e/e1000e.ko
+            kernel/drivers/net/ethernet/realtek/r8169/r8169.ko
+            kernel/drivers/net/ethernet/realtek/r8125/r8125.ko
+          )
+          for f in "${KELIST[@]}"; do
+            src="full/lib/modules/$VER/$f"
+            dst="minimal/lib/modules/$VER/$f"
+            [ -f "$src" ] && { mkdir -p $(dirname "$dst"); cp "$src" "$dst"; }
+          done
+          cd minimal
+          tar -zcf ../minimal-drivers.tar.gz lib
+
+      - name: Fetch busybox
+        run: |
+          wget -O out/busybox-mini https://busybox.net/downloads/binaries/1.36.1-x86_64-linux-musl/busybox
+          wget -O out/busybox-full https://busybox.net/downloads/binaries/1.36.1-x86_64-linux-musl/busybox
+          chmod +x out/busybox-mini out/busybox-full
+
+      - name: Build initramfs
+        run: |
+          chmod +x mkinit.sh
+          ./mkinit.sh
+
+      - name: Build bootable disk image
+        run: |
+          chmod +x mkimg.sh
+          ./mkimg.sh
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimal-x86_64-os-img
+          path: bootable-disk.img
