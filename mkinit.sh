@@ -1,26 +1,36 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
+# 清理旧文件
 rm -rf initramfs
-mkdir -p initramfs/{bin,sbin,dev,proc,sys,tmp,root}
+rm -f initramfs.cpio.gz
 
-# 复制静态busybox
-cp /bin/busybox initramfs/bin/
-chmod +x initramfs/bin/busybox
-
-# 基础链接
+mkdir -p initramfs/{bin,sbin,dev,proc,sys,root,etc}
 cd initramfs
-ln -s bin/busybox init
-ln -s bin/busybox sbin/init
-for cmd in sh mount umount ls cat echo test mkdir rm cp sleep poweroff reboot; do
-    ln -s busybox bin/$cmd
-done
-cd ..
 
-# 打包
-cd initramfs
+# 复制busybox静态二进制
+cp /usr/bin/busybox-static bin/busybox
+chmod +x bin/busybox
+
+# 创建符号链接
+ln -s busybox bin/sh
+ln -s busybox bin/ls
+ln -s busybox bin/cat
+ln -s busybox bin/mount
+ln -s busybox bin/echo
+
+# 写init脚本
+cat > init <<'EOF'
+#!/bin/sh
+mount -t proc none /proc
+mount -t sysfs none /sys
+mount -t devtmpfs none /dev
+echo "Hello Minimal Linux!"
+exec /bin/sh
+EOF
+chmod +x init
+
+# 打包cpio
 find . -print0 | cpio --null -ov --format=newc | gzip -9 > ../initramfs.cpio.gz
 cd ..
-rm -rf initramfs
-
-echo "✅ initramfs.cpio.gz done"
+echo "✅ initramfs.cpio.gz 生成完成"
