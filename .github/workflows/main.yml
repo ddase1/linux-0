@@ -14,7 +14,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y build-essential bison flex libssl-dev bc cpio \
-            fdisk dosfstools mtools systemd-boot busybox-static rsync
+            fdisk dosfstools mtools systemd-boot busybox-static rsync libelf-dev
 
       - name: Download Linux 6.6.60
         run: |
