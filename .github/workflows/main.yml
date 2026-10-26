@@ -8,36 +8,32 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
-
       - name: Install dependencies
         run: |
           sudo apt update
+          sudo add-apt-repository universe
           sudo apt install -y build-essential bison flex libssl-dev bc cpio \
-            fdisk mtools busybox-static rsync libelf-dev e2fsprogs \
-            grub-pc-bin grub-efi-amd64-bin
-
-      - name: Download & Build Linux 6.6.60
+            fdisk dosfstools mtools rsync libelf-dev e2fsprogs grub-pc-bin grub-efi-amd64-bin busybox-static
+      - name: Download Linux 6.6.60
         run: |
           wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.60.tar.xz
           tar -xf linux-6.6.60.tar.xz
           cd linux-6.6.60
           make defconfig
+          # 自动开启ext4，防止根分区挂载失败
+          sed -i 's/# CONFIG_EXT4_FS is not set/CONFIG_EXT4_FS=y/' .config
           make -j$(nproc) bzImage
-
       - name: Copy kernel
         run: |
           cp linux-6.6.60/arch/x86_64/boot/bzImage ./bzImage
-
       - name: Build initramfs
         run: |
           chmod +x mkinit.sh
           ./mkinit.sh
-
       - name: Build bootable disk image
         run: |
           chmod +x mkimg.sh
           ./mkimg.sh
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
