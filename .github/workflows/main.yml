@@ -13,7 +13,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential bison flex libssl-dev bc cpio gzip wget xz-utils libelf-dev dwarves kmod rsync dosfstools mtools parted e2fsprogs systemd-boot
+          sudo apt install -y build-essential bison flex libssl-dev bc cpio gzip xz-utils libelf-dev dwarves kmod rsync dosfstools mtools parted e2fsprogs systemd-boot busybox-static
 
       - name: Download Linux 6.6.60
         run: |
@@ -57,11 +57,11 @@ jobs:
           cd minimal
           tar -zcf ../minimal-drivers.tar.gz lib
 
-      - name: Fetch busybox official minimal
+      - name: Get static busybox from apt
         run: |
           mkdir -p out
-          wget -O out/busybox-mini https://busybox.net/downloads/binaries/latest/x86_64-linux-musl/busybox
-          wget -O out/busybox-full https://busybox.net/downloads/binaries/latest/x86_64-linux-musl/busybox
+          cp /bin/busybox out/busybox-mini
+          cp /bin/busybox out/busybox-full
           chmod +x out/busybox-mini out/busybox-full
 
       - name: Build initramfs
