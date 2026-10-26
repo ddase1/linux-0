@@ -1,73 +1,73 @@
 #!/bin/bash
 set -e
 
-IMG="bootable-disk.img"
-SIZE=$(( 1024 * 1024 * 512 )) # 512MB
+IMG="bootable.img"
+IMG_SIZE=$((512 * 1024 * 1024)) # 512M
 
-# 清理旧文件
 rm -f "$IMG"
-rm -rf mnt efi
+rm -rf mnt efi_root
 
-# 新建空白镜像
-dd if=/dev/zero of="$IMG" bs=1 count="$SIZE" status=none
+# 1. 生成空白镜像
+dd if=/dev/zero of="$IMG" bs=1 count="$IMG_SIZE" status=none
 
-# GPT分区：EFI 32M + 根分区
+# 2. GPT分区：
+# p1: BIOS Boot 1M （GRUB BIOS core）
+# p2: ESP 32M, EF00 (EFI System)
+# p3: Linux root，剩余空间
 sfdisk "$IMG" <<EOF
 label: gpt
-,32M,U
+,1M,21686148-6449-6E6F-744E-6F6544454649
+,32M,C12A7328-F81F-11D2-BA4B-00A0C93EC93B
 ,+,L
 EOF
 
-# loop挂载（sudo）
+# 3. 挂载loop
 LOOP=$(sudo losetup --find --show -P "$IMG")
-EFI_DEV="${LOOP}p1"
-ROOT_DEV="${LOOP}p2"
+BIOSBOOT_DEV="${LOOP}p1"
+ESP_DEV="${LOOP}p2"
+ROOT_DEV="${LOOP}p3"
 
-sudo mkfs.fat -F32 -S 512 -s 1 "$EFI_DEV"
+# ========== 格式化ESP（改用稳妥参数，加卷标EFI） ==========
+sudo mkfs.fat -F32 -n EFI "$ESP_DEV"
 sudo mkfs.ext4 "$ROOT_DEV"
 
-mkdir -p efi mnt
-sudo mount "$EFI_DEV" efi
+mkdir -p efi_root mnt
+sudo mount "$ESP_DEV" efi_root
 sudo mount "$ROOT_DEV" mnt
 
-# --------------------------
-# EFI分区：手动放systemd-boot，不用bootctl install
-# --------------------------
-sudo mkdir -p efi/EFI/BOOT
-# 复制 systemd-boot 的EFI引导文件
-sudo cp /usr/lib/systemd/boot/efi/systemd-bootx64.efi efi/EFI/BOOT/BOOTX64.EFI
+# ========== 安装GRUB EFI（x86_64-efi） ==========
+sudo grub-install \
+    --target=x86_64-efi \
+    --efi-directory="$PWD/efi_root" \
+    --boot-directory="$PWD/efi_root/boot" \
+    --removable \
+    "$LOOP"
 
-# 内核+initramfs
-sudo cp bzImage efi/EFI/BOOT/vmlinuz
-sudo cp initramfs.cpio.gz efi/EFI/BOOT/initrd
+# 拷贝内核和initrd到ESP
+sudo cp bzImage efi_root/boot/vmlinuz
+sudo cp initramfs.cpio.gz efi_root/boot/initrd
 
-# loader配置
-sudo mkdir -p efi/loader/entries
-cat > entry.conf <<EOF
-title My Min Linux
-linux /EFI/BOOT/vmlinuz
-initrd /EFI/BOOT/initrd
-options root=/dev/vda2 rw quiet
+# 写grub.cfg
+cat > grub.cfg <<'EOF'
+menuentry "MyOS" {
+    linux /boot/vmlinuz root=/dev/sda3 rw console=tty0
+    initrd /boot/initrd
+}
 EOF
-sudo cp entry.conf efi/loader/entries/default.conf
-rm entry.conf
+sudo cp grub.cfg efi_root/boot/grub/grub.cfg
+rm grub.cfg
 
-# loader.conf 默认
-cat > loader.conf <<EOF
-default default
-timeout 3
-EOF
-sudo cp loader.conf efi/loader/loader.conf
-rm loader.conf
+# ========== 安装GRUB BIOS（传统BIOS引导） ==========
+sudo grub-install \
+    --target=i386-pc \
+    --boot-directory="$PWD/efi_root/boot" \
+    "$LOOP"
 
-# --------------------------
-# 拷贝rootfs
-# --------------------------
+# rootfs
 sudo cp -r rootfs/* mnt/
 
-# 【顺序：先卸载，再释放loop！】
-sudo umount efi
-sudo umount mnt
+# 卸载、释放loop
+sudo umount efi_root mnt
 sudo losetup -d "$LOOP"
 
-echo "✅ $IMG build finished"
+echo "✅ 双启动镜像完成：UEFI + BIOS"
