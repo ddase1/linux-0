@@ -13,14 +13,14 @@ jobs:
           sudo apt update
           sudo add-apt-repository universe
           sudo apt install -y build-essential bison flex libssl-dev bc cpio \
-            fdisk dosfstools mtools rsync libelf-dev e2fsprogs grub-pc-bin grub-efi-amd64-bin busybox-static
+            fdisk dosfstools mtools rsync libelf-dev e2fsprogs \
+            grub-pc-bin grub-efi-amd64-bin busybox-static
       - name: Download Linux 6.6.60
         run: |
           wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.60.tar.xz
           tar -xf linux-6.6.60.tar.xz
           cd linux-6.6.60
           make defconfig
-          # 自动开启ext4，防止根分区挂载失败
           sed -i 's/# CONFIG_EXT4_FS is not set/CONFIG_EXT4_FS=y/' .config
           make -j$(nproc) bzImage
       - name: Copy kernel
