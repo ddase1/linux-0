@@ -1,4 +1,4 @@
-name: Minimal Bootstrap | EXT4 Builtin, All Others Dynamic
+name: Build Minimal x86_64 EXT4 Builtin OS
 on:
   push:
   workflow_dispatch:
@@ -7,28 +7,27 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
+      - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential bison flex libssl-dev bc cpio gzip wget xz-utils libelf-dev dwarves kmod rsync
+          sudo apt install -y build-essential bison flex libssl-dev bc cpio gzip wget xz-utils libelf-dev dwarves kmod rsync dosfstools mtools parted e2fsprogs systemd-boot
 
-      - name: Fetch Linux 6.6.60
+      - name: Download Linux 6.6.60
         run: |
           wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.60.tar.xz
           tar -xf linux-6.6.60.tar.xz
-          cd linux-6.6.60
-          cp ../kernel.config .config
+          cp kernel.config linux-6.6.60/.config
 
-      - name: Build kernel + all modules
+      - name: Compile kernel and modules
         run: |
           cd linux-6.6.60
           make olddefconfig
           make -j$(nproc) bzImage modules
 
-      - name: Build full driver package
+      - name: Package full drivers
         run: |
           cd linux-6.6.60
           mkdir -p ../out/full/lib/modules
@@ -37,7 +36,7 @@ jobs:
           cd ../out/full
           tar -zcf ../full-drivers.tar.gz lib
 
-      - name: Build minimal driver package
+      - name: Package minimal drivers
         run: |
           cd out
           rm -rf minimal
@@ -58,36 +57,24 @@ jobs:
           cd minimal
           tar -zcf ../minimal-drivers.tar.gz lib
 
-      - name: Prepare busybox
+      - name: Fetch busybox
         run: |
-          wget -O busybox-mini https://busybox.net/downloads/binaries/1.36.1-x86_64-linux-musl/busybox
-          chmod +x busybox-mini
-          wget -O busybox-full https://busybox.net/downloads/binaries/1.36.1-x86_64-linux-musl/busybox
-          chmod +x busybox-full
-          mv busybox-mini out/
-          mv busybox-full out/
+          wget -O out/busybox-mini https://busybox.net/downloads/binaries/1.36.1-x86_64-linux-musl/busybox
+          wget -O out/busybox-full https://busybox.net/downloads/binaries/1.36.1-x86_64-linux-musl/busybox
+          chmod +x out/busybox-mini out/busybox-full
 
-      - name: Build tiny initramfs
+      - name: Build initramfs
         run: |
           chmod +x mkinit.sh
           ./mkinit.sh
 
-      - name: Copy bzImage
+      - name: Build bootable disk image
         run: |
-          cp linux-6.6.60/arch/x86_64/boot/bzImage out/
+          chmod +x mkimg.sh
+          ./mkimg.sh
 
-      - name: Archive all artifacts
-        run: |
-          cd out
-          zip -r ../minimal-ext4-builtin.zip \
-            bzImage \
-            initramfs.cpio.gz \
-            minimal-drivers.tar.gz \
-            full-drivers.tar.gz \
-            busybox-full
-
-      - name: Upload release
+      - name: Upload image artifact
         uses: actions/upload-artifact@v4
         with:
-          name: minimal-ext4-builtin-release
-          path: minimal-ext4-builtin.zip
+          name: minimal-x86_64-os-img
+          path: bootable-disk.img
